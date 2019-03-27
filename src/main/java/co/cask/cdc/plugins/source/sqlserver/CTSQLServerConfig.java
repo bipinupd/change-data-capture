@@ -35,6 +35,7 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   public static final String USERNAME = "username";
   public static final String PASSWORD = "password";
   public static final String DATABASE_NAME = "dbname";
+  public static final String SQN = "sequence";
 
   @Name(HOST_NAME)
   @Description("SQL Server hostname. Ex: mysqlsever.net")
@@ -65,21 +66,29 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   @Macro
   private final String password;
 
+  @Name(SQN)
+  @Description("Need the CDC Sequence Number in the output schema")
+  @Nullable
+  @Macro
+  private final Boolean sqn;
+
   public CTSQLServerConfig() {
     super("");
     port = 1433;
     username = null;
     password = null;
+    sqn = false;
   }
 
   public CTSQLServerConfig(String referenceName, String hostname, int port, String dbName, String username,
-                           String password) {
+                           String password, Boolean sqn) {
     super(referenceName);
     this.hostname = hostname;
     this.port = port;
     this.dbName = dbName;
     this.username = username;
     this.password = password;
+    this.sqn = sqn;
   }
 
   public String getHostname() {
@@ -102,6 +111,11 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   @Nullable
   public String getPassword() {
     return password;
+  }
+
+  @Nullable
+  public Boolean getSqn() {
+    return sqn;
   }
 
   @Override

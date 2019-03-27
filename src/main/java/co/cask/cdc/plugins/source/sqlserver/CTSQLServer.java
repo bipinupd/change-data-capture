@@ -57,10 +57,13 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
   private static final Logger LOG = LoggerFactory.getLogger(CTSQLServer.class);
   private final CTSQLServerConfig conf;
   private final SQLServerConnection dbConnection;
+  private final boolean requireSeqNumber;
 
   public CTSQLServer(CTSQLServerConfig conf) {
     this.conf = conf;
     dbConnection = new SQLServerConnection(getConnectionString(), conf.getUsername(), conf.getPassword());
+    requireSeqNumber = conf.getSqn();
+    LOG.debug("requireSeqNumber" + requireSeqNumber + " ==>" + Boolean.toString(requireSeqNumber));
   }
 
   @Override
@@ -93,7 +96,8 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
     // get change information dtream. This dstream has both schema and data changes
     LOG.info("Creating change information dstream");
     ClassTag<StructuredRecord> tag = ClassTag$.MODULE$.apply(StructuredRecord.class);
-    CTInputDStream dstream = new CTInputDStream(context.getSparkStreamingContext().ssc(), dbConnection);
+    CTInputDStream dstream = new CTInputDStream(context.getSparkStreamingContext().ssc(), dbConnection,
+            requireSeqNumber);
     return JavaDStream.fromDStream(dstream, tag)
       .mapToPair(structuredRecord -> new Tuple2<>("", structuredRecord))
       // map the dstream with schema state store to detect changes in schema

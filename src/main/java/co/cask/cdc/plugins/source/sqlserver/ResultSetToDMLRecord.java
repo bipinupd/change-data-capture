@@ -40,22 +40,30 @@ import java.util.Map;
  * to {@link StructuredRecord} for dml records
  */
 public class ResultSetToDMLRecord implements Function<ResultSet, StructuredRecord> {
-  private static final int CHANGE_TABLE_COLUMNS_SIZE = 3;
-  private final TableInformation tableInformation;
+  private static final int CHANGE_TABLE_COLUMNS_SIZE_WITHOUT_SQN = 3;
+  private static final int CHANGE_TABLE_COLUMNS_SIZE_WITH_SQN = 2;
 
-  ResultSetToDMLRecord(TableInformation tableInformation) {
+  private final TableInformation tableInformation;
+  private final boolean requireSeqNumber;
+
+  ResultSetToDMLRecord(TableInformation tableInformation, boolean requireSeqNumber) {
+    this.requireSeqNumber = requireSeqNumber;
     this.tableInformation = tableInformation;
   }
 
   @Override
   public StructuredRecord call(ResultSet row) throws SQLException {
-    Schema changeSchema = getChangeSchema(row);
+    int size = CHANGE_TABLE_COLUMNS_SIZE_WITHOUT_SQN;
+    if (requireSeqNumber) {
+      size = CHANGE_TABLE_COLUMNS_SIZE_WITH_SQN;
+    }
+    Schema changeSchema = getChangeSchema(row, size);
     return StructuredRecord.builder(Schemas.DML_SCHEMA)
       .set(Schemas.TABLE_FIELD, Joiner.on(".").join(tableInformation.getSchemaName(), tableInformation.getName()))
       .set(Schemas.PRIMARY_KEYS_FIELD, Lists.newArrayList(tableInformation.getPrimaryKeys()))
       .set(Schemas.OP_TYPE_FIELD, getChangeOperation(row).name())
       .set(Schemas.UPDATE_SCHEMA_FIELD, changeSchema.toString())
-      .set(Schemas.UPDATE_VALUES_FIELD, getChangeData(row, changeSchema))
+      .set(Schemas.UPDATE_VALUES_FIELD, getChangeData(row, changeSchema, size))
       .build();
   }
 
@@ -72,11 +80,12 @@ public class ResultSetToDMLRecord implements Function<ResultSet, StructuredRecor
     throw new IllegalArgumentException(String.format("Unknown change operation '%s'", operation));
   }
 
-  private static Map<String, Object> getChangeData(ResultSet resultSet, Schema changeSchema) throws SQLException {
+  private static Map<String, Object> getChangeData(ResultSet resultSet, Schema changeSchema,
+                                                   int size) throws SQLException {
     ResultSetMetaData metadata = resultSet.getMetaData();
     Map<String, Object> changes = new HashMap<>();
     for (int i = 0; i < changeSchema.getFields().size(); i++) {
-      int column = i + CHANGE_TABLE_COLUMNS_SIZE;
+      int column = i + size;
       int sqlType = metadata.getColumnType(column);
       int sqlPrecision = metadata.getPrecision(column);
       int sqlScale = metadata.getScale(column);
@@ -88,11 +97,11 @@ public class ResultSetToDMLRecord implements Function<ResultSet, StructuredRecor
     return changes;
   }
 
-  private static Schema getChangeSchema(ResultSet resultSet) throws SQLException {
+  private static Schema getChangeSchema(ResultSet resultSet, int size) throws SQLException {
     List<Schema.Field> schemaFields = DBUtils.getSchemaFields(resultSet);
     // drop first three columns as they are from change tracking tables and does not represent the change data
     return Schema.recordOf(Schemas.SCHEMA_RECORD,
-                           schemaFields.subList(CHANGE_TABLE_COLUMNS_SIZE, schemaFields.size()));
+                           schemaFields.subList(size, schemaFields.size()));
   }
 
   private static Object transformSQLToJavaType(Object sqlValue) {

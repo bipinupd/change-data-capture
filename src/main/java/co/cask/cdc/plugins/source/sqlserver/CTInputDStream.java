@@ -50,12 +50,15 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
   private static final Logger LOG = LoggerFactory.getLogger(CTInputDStream.class);
   private final JdbcRDD.ConnectionFactory connectionFactory;
   private long trackingOffset;
+  private boolean requireSeqNumber;
 
-  CTInputDStream(StreamingContext ssc, JdbcRDD.ConnectionFactory connectionFactory) {
+  CTInputDStream(StreamingContext ssc, JdbcRDD.ConnectionFactory connectionFactory,
+                 boolean requireSeqNumber) {
     super(ssc, ClassTag$.MODULE$.apply(StructuredRecord.class));
     this.connectionFactory = connectionFactory;
     // if not current tracking version is given initialize it to 0
     trackingOffset = 0;
+    this.requireSeqNumber = requireSeqNumber;
   }
 
   @Override
@@ -77,7 +80,8 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
       long cur = getCurrentTrackingVersion(connection);
       // get all the data changes (DML) for the ct enabled tables till current tracking version
       for (TableInformation tableInformation : tableInformations) {
-        changeRDDs.add(getChangeData(tableInformation, prev, cur));
+        changeRDDs.add(getChangeData(tableInformation, prev, cur,
+                requireSeqNumber));
       }
       // update the tracking version
       trackingOffset = cur;
@@ -108,9 +112,10 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
     // Also no need to close the dbconnection as JdbcRDD takes care of closing it
   }
 
-  private JavaRDD<StructuredRecord> getChangeData(TableInformation tableInformation, long prev, long cur) {
-    String stmt = String.format("SELECT [CT].[SYS_CHANGE_VERSION], [CT].[SYS_CHANGE_CREATION_VERSION], " +
-                                  "[CT].[SYS_CHANGE_OPERATION], %s, %s FROM [%s] as [CI] RIGHT OUTER JOIN " +
+  private JavaRDD<StructuredRecord> getChangeData(TableInformation tableInformation, long prev, long cur,
+                                                  boolean requireSeqNumber) {
+    String stmt = String.format("SELECT [CT].[SYS_CHANGE_CREATION_VERSION], [CT].[SYS_CHANGE_OPERATION]," +
+                                  " [CT].[SYS_CHANGE_VERSION], %s, %s FROM [%s] as [CI] RIGHT OUTER JOIN " +
                                   "CHANGETABLE (CHANGES [%s], %s) as [CT] on %s where [CT]" +
                                   ".[SYS_CHANGE_VERSION] > ? " +
                                   "and [CT].[SYS_CHANGE_VERSION] <= ? ORDER BY [CT]" +
@@ -124,7 +129,7 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
 
     //TODO Currently we are not partitioning the data. We should partition it for scalability
     return JdbcRDD.create(getJavaSparkContext(), connectionFactory, stmt, prev, cur, 1,
-                          new ResultSetToDMLRecord(tableInformation));
+                          new ResultSetToDMLRecord(tableInformation, requireSeqNumber));
   }
 
   private long getCurrentTrackingVersion(Connection connection) throws SQLException {
@@ -141,7 +146,8 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
     String stmt = String.format("SELECT TOP 1 * FROM [%s].[%s] where ?=?", tableInformation.getSchemaName(),
                                 tableInformation.getName());
     return JdbcRDD.create(getJavaSparkContext(), connectionFactory, stmt, 1, 1, 1,
-                          new ResultSetToDDLRecord(tableInformation.getSchemaName(), tableInformation.getName()));
+                          new ResultSetToDDLRecord(tableInformation.getSchemaName(), tableInformation.getName(),
+                                  requireSeqNumber));
   }
 
   private JavaSparkContext getJavaSparkContext() {

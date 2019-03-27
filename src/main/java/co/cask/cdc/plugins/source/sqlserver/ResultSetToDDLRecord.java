@@ -34,15 +34,21 @@ public class ResultSetToDDLRecord implements Function<ResultSet, StructuredRecor
 
   private final String schemaName;
   private final String tableName;
+  private final boolean requireSeqNumber;
 
-  ResultSetToDDLRecord(String schemaName, String tableName) {
+  ResultSetToDDLRecord(String schemaName, String tableName, boolean requireSeqNumber) {
     this.schemaName = schemaName;
     this.tableName = tableName;
+    this.requireSeqNumber = requireSeqNumber;
   }
 
   @Override
   public StructuredRecord call(ResultSet row) throws SQLException {
-    Schema tableSchema = Schema.recordOf(Schemas.SCHEMA_RECORD, DBUtils.getSchemaFields(row));
+    java.util.List<co.cask.cdap.api.data.schema.Schema.Field> fields = DBUtils.getSchemaFields(row);
+    if (requireSeqNumber) {
+      fields.add(co.cask.cdap.api.data.schema.Schema.Field.of("SYS_CHANGE_VERSION", Schema.of(Schema.Type.INT)));
+    }
+    Schema tableSchema = Schema.recordOf(Schemas.SCHEMA_RECORD, fields);
     return StructuredRecord.builder(Schemas.DDL_SCHEMA)
       .set(Schemas.TABLE_FIELD, Joiner.on(".").join(schemaName, tableName))
       .set(Schemas.SCHEMA_FIELD, tableSchema.toString())
