@@ -44,6 +44,19 @@
           "label": "Database name",
           "name": "dbname",
           "description": "SQL Server database name which needs to be tracked. Note: Change Tracking must be enabled on the database for the source to read the chage data"
+        },
+        {
+          "widget-type": "select",
+          "label": "CDC Sequence Number",
+          "name": "sqn",
+          "description": "Need the CDC Sequence Number in the output schema",
+          "widget-attributes": {
+            "values": [
+              "true",
+              "false"
+            ],
+            "default": "false"
+          }
         }
       ]
     }

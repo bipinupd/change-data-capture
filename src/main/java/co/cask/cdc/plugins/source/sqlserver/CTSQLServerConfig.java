@@ -35,7 +35,7 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   public static final String USERNAME = "username";
   public static final String PASSWORD = "password";
   public static final String DATABASE_NAME = "dbname";
-  public static final String SQN = "sequence";
+  public static final String SQN = "sqn";
 
   @Name(HOST_NAME)
   @Description("SQL Server hostname. Ex: mysqlsever.net")
