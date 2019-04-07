@@ -30,27 +30,17 @@ import javax.annotation.Nullable;
  */
 public class CTSQLServerConfig extends CDCReferencePluginConfig {
 
-  public static final String HOST_NAME = "hostname";
-  public static final String PORT = "port";
+  public static final String CONNECTION_STRING = "connectionString";
   public static final String USERNAME = "username";
   public static final String PASSWORD = "password";
-  public static final String DATABASE_NAME = "dbname";
+  public static final String DBNAME = "dbname";
   public static final String SQN = "sqn";
+  public static final String CDCNUMBER = "cdcnumber";
 
-  @Name(HOST_NAME)
-  @Description("SQL Server hostname. Ex: mysqlsever.net")
+  @Name(CONNECTION_STRING)
+  @Description("Connection String")
   @Macro
-  private String hostname;
-
-  @Name(PORT)
-  @Description("SQL Server port. Defaults to 1433")
-  @Macro
-  private final int port;
-
-  @Name(DATABASE_NAME)
-  @Description("SQL Server database name. Note: CT must be enabled on the database for change tracking.")
-  @Macro
-  private String dbName;
+  private String connectionString;
 
   @Name(USERNAME)
   @Description("User to use to connect to the specified database. Required for databases that " +
@@ -58,6 +48,10 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   @Nullable
   @Macro
   private final String username;
+
+  @Name(DBNAME)
+  @Description("Database Name")
+  public String dbName;
 
   @Name(PASSWORD)
   @Description("Password to use to connect to the specified database. Required for databases that " +
@@ -72,38 +66,41 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   @Macro
   private final Boolean sqn;
 
+
+  @Name(CDCNUMBER)
+  @Description("CDC Sequence Number to start ingesting from")
+  @Nullable
+  @Macro
+  private final int cdcnumber;
+
+
   public CTSQLServerConfig() {
     super("");
-    port = 1433;
     username = null;
     password = null;
     sqn = false;
+    cdcnumber = 0;
   }
 
   public CTSQLServerConfig(String referenceName, String hostname, int port, String dbName, String username,
-                           String password, Boolean sqn) {
+                           String password, Boolean sqn, int cdcnumber) {
     super(referenceName);
-    this.hostname = hostname;
-    this.port = port;
-    this.dbName = dbName;
+    this.connectionString = hostname;
     this.username = username;
     this.password = password;
     this.sqn = sqn;
+    this.cdcnumber = cdcnumber;
   }
 
-  public String getHostname() {
-    return hostname;
-  }
-
-  public int getPort() {
-    return port;
+  public String getConnectionString() {
+    return connectionString;
   }
 
   public String getDbName() {
-    return dbName;
+        return dbName;
   }
 
-  @Nullable
+    @Nullable
   public String getUsername() {
     return username;
   }
@@ -118,11 +115,13 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
     return sqn;
   }
 
+  @Nullable
+  public int getCdcnumber() {
+    return cdcnumber;
+  }
+
   @Override
   public void validate() {
     super.validate();
-    if (!containsMacro(PORT) && (port < 0 || port > 65535)) {
-      throw new InvalidConfigPropertyException("Port number should be in range 0-65535", PORT);
-    }
   }
 }

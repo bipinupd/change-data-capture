@@ -115,11 +115,10 @@ public class CTSQLServerPluginIntegrationTest {
     @Test
     public void testDeploymentFailedWithoutConnectionToDB() throws Exception {
       ImmutableMap<String, String> sourceProps = ImmutableMap.<String, String>builder()
-        .put(CTSQLServerConfig.HOST_NAME, HOST)
-        .put(CTSQLServerConfig.PORT, PORT)
+        .put(CTSQLServerConfig.CONNECTION_STRING, HOST)
         .put(CTSQLServerConfig.USERNAME, USERNAME)
         .put(CTSQLServerConfig.PASSWORD, PASSWORD)
-        .put(CTSQLServerConfig.DATABASE_NAME, "non_existing_db")
+        .put(CTSQLServerConfig.DBNAME, "non_existing_db")
         .put(Constants.Reference.REFERENCE_NAME, "CTSQLServerSource")
         .build();
       ETLPlugin sourceConfig = new ETLPlugin(PLUGIN_NAME, StreamingSource.PLUGIN_TYPE, sourceProps);
@@ -138,11 +137,10 @@ public class CTSQLServerPluginIntegrationTest {
       }
 
       ImmutableMap<String, String> sourceProps = ImmutableMap.<String, String>builder()
-        .put(CTSQLServerConfig.HOST_NAME, HOST)
-        .put(CTSQLServerConfig.PORT, PORT)
+        .put(CTSQLServerConfig.CONNECTION_STRING, HOST)
         .put(CTSQLServerConfig.USERNAME, USERNAME)
         .put(CTSQLServerConfig.PASSWORD, PASSWORD)
-        .put(CTSQLServerConfig.DATABASE_NAME, dbName)
+        .put(CTSQLServerConfig.DBNAME, dbName)
         .put(Constants.Reference.REFERENCE_NAME, "CTSQLServerSource")
         .build();
       ETLPlugin sourceConfig = new ETLPlugin(PLUGIN_NAME, StreamingSource.PLUGIN_TYPE, sourceProps);
@@ -178,11 +176,10 @@ public class CTSQLServerPluginIntegrationTest {
       outputTable = testName.getMethodName() + "_out";
 
       ImmutableMap<String, String> sourceProps = ImmutableMap.<String, String>builder()
-        .put(CTSQLServerConfig.HOST_NAME, HOST)
-        .put(CTSQLServerConfig.PORT, PORT)
+        .put(CTSQLServerConfig.CONNECTION_STRING, HOST)
         .put(CTSQLServerConfig.USERNAME, USERNAME)
         .put(CTSQLServerConfig.PASSWORD, PASSWORD)
-        .put(CTSQLServerConfig.DATABASE_NAME, dbName)
+        .put(CTSQLServerConfig.DBNAME, dbName)
         .put(Constants.Reference.REFERENCE_NAME, "CTSQLServerSource")
         .build();
       ETLPlugin sourceConfig = new ETLPlugin(PLUGIN_NAME, StreamingSource.PLUGIN_TYPE, sourceProps);

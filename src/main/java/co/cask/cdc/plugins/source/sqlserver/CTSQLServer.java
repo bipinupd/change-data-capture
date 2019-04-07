@@ -40,7 +40,7 @@ import scala.reflect.ClassTag;
 import scala.reflect.ClassTag$;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
+import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -56,13 +56,13 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
 
   private static final Logger LOG = LoggerFactory.getLogger(CTSQLServer.class);
   private final CTSQLServerConfig conf;
-  private final SQLServerConnection dbConnection;
   private final boolean requireSeqNumber;
+  private final long offset;
 
   public CTSQLServer(CTSQLServerConfig conf) {
     this.conf = conf;
-    dbConnection = new SQLServerConnection(getConnectionString(), conf.getUsername(), conf.getPassword());
     requireSeqNumber = conf.getSqn();
+    offset = conf.getCdcnumber();
     LOG.debug("requireSeqNumber" + requireSeqNumber + " ==>" + Boolean.toString(requireSeqNumber));
   }
 
@@ -71,18 +71,27 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
     conf.validate();
     pipelineConfigurer.createDataset(conf.referenceName, Constants.EXTERNAL_DATASET_TYPE, DatasetProperties.EMPTY);
     pipelineConfigurer.getStageConfigurer().setOutputSchema(Schemas.CHANGE_SCHEMA);
-
-    if (conf.getUsername() != null && conf.getPassword() != null) {
-      LOG.info("Creating connection with url {}, username {}, password *****",
-               getConnectionString(), conf.getUsername());
-    } else {
-      LOG.info("Creating connection with url {}", getConnectionString());
+    Connection connection;
+    try {
+      Class.forName(net.sourceforge.jtds.jdbc.Driver.class.getName());
+      if (conf.getUsername() != null && conf.getPassword() != null) {
+        LOG.info("Creating connection with url {}, username {}, " +
+                "password *****", getConnectionString(), conf.getUsername());
+        connection = DriverManager.getConnection(getConnectionString(),
+                conf.getUsername(), conf.getPassword());
+      } else {
+        LOG.info("Creating connection with url {}", getConnectionString());
+        connection = DriverManager.getConnection(getConnectionString(), null, null);
+      }
+    } catch (Exception e) {
+      if (e instanceof SQLException) {
+        LOG.error("Failed to establish connection with SQL Server with the given configuration.");
+      }
+      throw new InvalidStageException(e.toString());
     }
-    try (Connection connection = dbConnection.getConnection()) {
-      // check that CDC is enabled on the database
+    try {
       checkDBCTEnabled(connection, conf.getDbName());
     } catch (InvalidStageException e) {
-      // rethrow validation exception
       throw e;
     } catch (Exception e) {
       throw new InvalidStageException(String.format("Failed to check tracking status. Error: %s", e.getMessage()), e);
@@ -92,23 +101,43 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
   @Override
   public JavaDStream<StructuredRecord> getStream(StreamingContext context) throws Exception {
     context.registerLineage(conf.referenceName);
-
+    Connection connection;
+    try {
+      Class.forName(net.sourceforge.jtds.jdbc.Driver.class.getName());
+      if (conf.getUsername() != null && conf.getPassword() != null) {
+        LOG.info("Creating connection with url {}, username {}, " +
+                "password *****", getConnectionString(), conf.getUsername());
+        connection = DriverManager.getConnection(getConnectionString(),
+                conf.getUsername(), conf.getPassword());
+      } else {
+        LOG.info("Creating connection with url {}", getConnectionString());
+        connection = DriverManager.getConnection(getConnectionString(), null, null);
+      }
+    } catch (Exception e) {
+      if (e instanceof SQLException) {
+        LOG.error("Failed to establish connection with SQL Server with the given configuration.");
+      }
+      throw e;
+    }
+    checkDBCTEnabled(connection, conf.getDbName());
     // get change information dtream. This dstream has both schema and data changes
     LOG.info("Creating change information dstream");
     ClassTag<StructuredRecord> tag = ClassTag$.MODULE$.apply(StructuredRecord.class);
-    CTInputDStream dstream = new CTInputDStream(context.getSparkStreamingContext().ssc(), dbConnection,
-            requireSeqNumber);
+    CTInputDStream dstream = new CTInputDStream(context.getSparkStreamingContext().ssc(), tag,
+            new SQLServerConnection(conf.getConnectionString(), conf.getUsername(), conf.getPassword()),
+            getConnectionString(), conf.getUsername(), conf.getPassword(),
+            requireSeqNumber, offset);
     return JavaDStream.fromDStream(dstream, tag)
-      .mapToPair(structuredRecord -> new Tuple2<>("", structuredRecord))
-      // map the dstream with schema state store to detect changes in schema
-      // filter out the ddl record whose schema hasn't changed and then drop all the keys
-      .mapWithState(StateSpec.function(schemaStateFunction()))
-      .map(Schemas::toCDCRecord);
+            .mapToPair(structuredRecord -> new Tuple2<>("", structuredRecord))
+            // map the dstream with schema state store to detect changes in schema
+            // filter out the ddl record whose schema hasn't changed and then drop all the keys
+            .mapWithState(StateSpec.function(schemaStateFunction()))
+            .map(Schemas::toCDCRecord);
   }
 
   private void checkDBCTEnabled(Connection connection, String dbName) throws SQLException {
     String query = "SELECT * FROM sys.change_tracking_databases WHERE database_id=DB_ID(?)";
-    try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+    try (java.sql.PreparedStatement preparedStatement = connection.prepareStatement(query)) {
       preparedStatement.setString(1, dbName);
       try (ResultSet resultSet = preparedStatement.executeQuery()) {
         if (resultSet.next()) {
@@ -122,8 +151,7 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
   }
 
   private String getConnectionString() {
-    return String.format("jdbc:sqlserver://%s:%s;DatabaseName=%s", conf.getHostname(), conf.getPort(),
-                         conf.getDbName());
+    return  conf.getConnectionString();
   }
 
   private static Function4<Time, String, Optional<StructuredRecord>, State<Map<String, String>>,

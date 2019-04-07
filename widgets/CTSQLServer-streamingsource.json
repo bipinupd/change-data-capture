@@ -47,7 +47,7 @@
         },
         {
           "widget-type": "select",
-          "label": "CDC Sequence Number",
+          "label": "Generate CDC Sequence Number in output schema",
           "name": "sqn",
           "description": "Need the CDC Sequence Number in the output schema",
           "widget-attributes": {
@@ -57,6 +57,12 @@
             ],
             "default": "false"
           }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "CDC Sequence Number",
+          "name": "cdcnnumber",
+          "description": "Sequence Number to start ingesting number"
         }
       ]
     }

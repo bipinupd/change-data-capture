@@ -18,6 +18,7 @@ package co.cask.cdc.plugins.source.sqlserver;
 
 import co.cask.cdap.api.data.format.StructuredRecord;
 import com.google.common.base.Throwables;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.rdd.JdbcRDD;
@@ -28,6 +29,7 @@ import org.apache.spark.streaming.dstream.InputDStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.Option;
+import scala.reflect.ClassTag;
 import scala.reflect.ClassTag$;
 
 import java.sql.Connection;
@@ -49,15 +51,22 @@ import java.util.stream.Collectors;
 public class CTInputDStream extends InputDStream<StructuredRecord> {
   private static final Logger LOG = LoggerFactory.getLogger(CTInputDStream.class);
   private final JdbcRDD.ConnectionFactory connectionFactory;
+  private ClassTag<StructuredRecord> tag;
+  private String connection;
+  private String username;
+  private String password;
   private long trackingOffset;
   private boolean requireSeqNumber;
 
-  CTInputDStream(StreamingContext ssc, JdbcRDD.ConnectionFactory connectionFactory,
-                 boolean requireSeqNumber) {
+  CTInputDStream(StreamingContext ssc, ClassTag<StructuredRecord> tag, JdbcRDD.ConnectionFactory connectionFactory,
+                 String connection, String username,
+                 String password, boolean requireSeqNumber, long offset) {
     super(ssc, ClassTag$.MODULE$.apply(StructuredRecord.class));
     this.connectionFactory = connectionFactory;
-    // if not current tracking version is given initialize it to 0
-    trackingOffset = 0;
+    this.connection = connection;
+    this.username = username;
+    this.password = password;
+    trackingOffset = offset;
     this.requireSeqNumber = requireSeqNumber;
   }
 
@@ -126,7 +135,6 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
                                   (tableInformation.getPrimaryKeys()));
 
     LOG.debug("Querying for change data with statement {}", stmt);
-
     //TODO Currently we are not partitioning the data. We should partition it for scalability
     return JdbcRDD.create(getJavaSparkContext(), connectionFactory, stmt, prev, cur, 1,
                           new ResultSetToDMLRecord(tableInformation, requireSeqNumber));

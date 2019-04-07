@@ -126,11 +126,10 @@ public class CDCPipelinePerfTest extends CDCPluginPerfTestBase {
     LOG.info("Deploying application");
 
     ImmutableMap<String, String> sourceProps = ImmutableMap.<String, String>builder()
-      .put(CTSQLServerConfig.HOST_NAME, SQL_HOST)
-      .put(CTSQLServerConfig.PORT, SQL_PORT)
+      .put(CTSQLServerConfig.CONNECTION_STRING, SQL_HOST)
       .put(CTSQLServerConfig.USERNAME, SQL_USERNAME)
       .put(CTSQLServerConfig.PASSWORD, SQL_PASSWORD)
-      .put(CTSQLServerConfig.DATABASE_NAME, dbName)
+      .put(CTSQLServerConfig.DBNAME, dbName)
       .put(Constants.Reference.REFERENCE_NAME, "CTSQLServerSource")
       .build();
     ETLPlugin sourceConfig = new ETLPlugin("CTSQLServer", StreamingSource.PLUGIN_TYPE, sourceProps);
