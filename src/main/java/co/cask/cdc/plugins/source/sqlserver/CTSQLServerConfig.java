@@ -20,7 +20,6 @@ import co.cask.cdap.api.annotation.Description;
 import co.cask.cdap.api.annotation.Macro;
 import co.cask.cdap.api.annotation.Name;
 import co.cask.cdap.api.plugin.PluginConfig;
-import co.cask.cdap.etl.api.validation.InvalidConfigPropertyException;
 import co.cask.cdc.plugins.common.CDCReferencePluginConfig;
 
 import javax.annotation.Nullable;
@@ -36,6 +35,7 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   public static final String DBNAME = "dbname";
   public static final String SQN = "sqn";
   public static final String CDCNUMBER = "cdcnumber";
+  public static final String TABLENAME = "tableName";
 
   @Name(CONNECTION_STRING)
   @Description("Connection String")
@@ -74,22 +74,31 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   private final int cdcnumber;
 
 
+  @Name(TABLENAME)
+  @Description("Table name for CT Information")
+  @Nullable
+  @Macro
+  private final String tableName;
+
+
   public CTSQLServerConfig() {
     super("");
     username = null;
     password = null;
     sqn = false;
     cdcnumber = 0;
+    tableName = null;
   }
 
   public CTSQLServerConfig(String referenceName, String hostname, int port, String dbName, String username,
-                           String password, Boolean sqn, int cdcnumber) {
+                           String password, Boolean sqn, int cdcnumber, String tableName) {
     super(referenceName);
     this.connectionString = hostname;
     this.username = username;
     this.password = password;
     this.sqn = sqn;
     this.cdcnumber = cdcnumber;
+    this.tableName = tableName;
   }
 
   public String getConnectionString() {
@@ -100,7 +109,7 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
         return dbName;
   }
 
-    @Nullable
+  @Nullable
   public String getUsername() {
     return username;
   }
@@ -118,6 +127,11 @@ public class CTSQLServerConfig extends CDCReferencePluginConfig {
   @Nullable
   public int getCdcnumber() {
     return cdcnumber;
+  }
+
+  @Nullable
+  public String getTableName() {
+    return tableName;
   }
 
   @Override

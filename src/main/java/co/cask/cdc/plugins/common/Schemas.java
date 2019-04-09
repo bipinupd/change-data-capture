@@ -31,9 +31,9 @@ import java.util.stream.Collectors;
 public class Schemas {
 
   private static final Schema SIMPLE_TYPES = Schema.unionOf(Arrays.stream(Type.values())
-                                                              .filter(Type::isSimpleType)
-                                                              .map(Schema::of)
-                                                              .collect(Collectors.toList()));
+          .filter(Type::isSimpleType)
+          .map(Schema::of)
+          .collect(Collectors.toList()));
 
   public static final String SCHEMA_RECORD = "schema";
   public static final String TABLE_FIELD = "table";
@@ -46,36 +46,36 @@ public class Schemas {
   public static final String UPDATE_VALUES_FIELD = "rows_values";
 
   public static final Schema DDL_SCHEMA = Schema.recordOf(
-    "DDLRecord",
-    Field.of(TABLE_FIELD, Schema.of(Type.STRING)),
-    Field.of(SCHEMA_FIELD, Schema.of(Type.STRING))
+          "DDLRecord",
+          Field.of(TABLE_FIELD, Schema.of(Type.STRING)),
+          Field.of(SCHEMA_FIELD, Schema.of(Type.STRING))
   );
 
   public static final Schema DML_SCHEMA = Schema.recordOf(
-    "DMLRecord",
-    Field.of(OP_TYPE_FIELD, enumWith(OperationType.class)),
-    Field.of(TABLE_FIELD, Schema.of(Type.STRING)),
-    Field.of(PRIMARY_KEYS_FIELD, Schema.arrayOf(Schema.of(Type.STRING))),
-    Field.of(UPDATE_SCHEMA_FIELD, Schema.of(Type.STRING)),
-    Field.of(UPDATE_VALUES_FIELD, Schema.mapOf(Schema.of(Type.STRING), SIMPLE_TYPES))
+          "DMLRecord",
+          Field.of(OP_TYPE_FIELD, enumWith(OperationType.class)),
+          Field.of(TABLE_FIELD, Schema.of(Type.STRING)),
+          Field.of(PRIMARY_KEYS_FIELD, Schema.arrayOf(Schema.of(Type.STRING))),
+          Field.of(UPDATE_SCHEMA_FIELD, Schema.of(Type.STRING)),
+          Field.of(UPDATE_VALUES_FIELD, Schema.mapOf(Schema.of(Type.STRING), SIMPLE_TYPES))
   );
 
   public static final Schema CHANGE_SCHEMA = Schema.recordOf(
-    "changeRecord",
-    Field.of(DDL_FIELD, Schema.nullableOf(DDL_SCHEMA)),
-    Field.of(DML_FIELD, Schema.nullableOf(DML_SCHEMA))
+          "changeRecord",
+          Field.of(DDL_FIELD, Schema.nullableOf(DDL_SCHEMA)),
+          Field.of(DML_FIELD, Schema.nullableOf(DML_SCHEMA))
   );
 
   public static StructuredRecord toCDCRecord(StructuredRecord changeRecord) {
     String recordName = changeRecord.getSchema().getRecordName();
     if (Objects.equals(recordName, DDL_SCHEMA.getRecordName())) {
       return StructuredRecord.builder(CHANGE_SCHEMA)
-        .set(DDL_FIELD, changeRecord)
-        .build();
+              .set(DDL_FIELD, changeRecord)
+              .build();
     } else if (Objects.equals(recordName, DML_SCHEMA.getRecordName())) {
       return StructuredRecord.builder(CHANGE_SCHEMA)
-        .set(DML_FIELD, changeRecord)
-        .build();
+              .set(DML_FIELD, changeRecord)
+              .build();
     }
     throw new IllegalArgumentException(String.format("Wrong schema name '%s' for record", recordName));
   }

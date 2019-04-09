@@ -19,6 +19,7 @@ package co.cask.cdc.plugins.source.sqlserver;
 import co.cask.cdap.api.annotation.Description;
 import co.cask.cdap.api.annotation.Name;
 import co.cask.cdap.api.annotation.Plugin;
+import co.cask.cdap.api.data.format.RecordFormat;
 import co.cask.cdap.api.data.format.StructuredRecord;
 import co.cask.cdap.api.dataset.DatasetProperties;
 import co.cask.cdap.etl.api.PipelineConfigurer;
@@ -28,6 +29,7 @@ import co.cask.cdap.etl.api.validation.InvalidStageException;
 import co.cask.cdc.plugins.common.Schemas;
 import co.cask.hydrator.common.Constants;
 import org.apache.spark.api.java.Optional;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function4;
 import org.apache.spark.streaming.State;
 import org.apache.spark.streaming.StateSpec;
@@ -57,12 +59,14 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
   private static final Logger LOG = LoggerFactory.getLogger(CTSQLServer.class);
   private final CTSQLServerConfig conf;
   private final boolean requireSeqNumber;
-  private final long offset;
+  private long offset;
+  private final String tableName;
 
   public CTSQLServer(CTSQLServerConfig conf) {
     this.conf = conf;
     requireSeqNumber = conf.getSqn();
     offset = conf.getCdcnumber();
+    tableName = conf.getTableName();
     LOG.debug("requireSeqNumber" + requireSeqNumber + " ==>" + Boolean.toString(requireSeqNumber));
   }
 
@@ -119,19 +123,18 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
       }
       throw e;
     }
-    checkDBCTEnabled(connection, conf.getDbName());
     // get change information dtream. This dstream has both schema and data changes
     LOG.info("Creating change information dstream");
-    ClassTag<StructuredRecord> tag = ClassTag$.MODULE$.apply(StructuredRecord.class);
-    CTInputDStream dstream = new CTInputDStream(context.getSparkStreamingContext().ssc(), tag,
+    ClassTag<StructuredRecord> tag = ClassTag$.MODULE$.<StructuredRecord>apply(StructuredRecord.class);
+    CTInputDStream dstream = new CTInputDStream(context.getSparkStreamingContext().ssc(),
             new SQLServerConnection(conf.getConnectionString(), conf.getUsername(), conf.getPassword()),
             getConnectionString(), conf.getUsername(), conf.getPassword(),
-            requireSeqNumber, offset);
+            requireSeqNumber, offset, tableName);
     return JavaDStream.fromDStream(dstream, tag)
-            .mapToPair(structuredRecord -> new Tuple2<>("", structuredRecord))
-            // map the dstream with schema state store to detect changes in schema
-            // filter out the ddl record whose schema hasn't changed and then drop all the keys
-            .mapWithState(StateSpec.function(schemaStateFunction()))
+     //       .mapToPair(structuredRecord -> new Tuple2<>("", structuredRecord))
+//            // map the dstream with schema state store to detect changes in schema
+//            // filter out the ddl record whose schema hasn't changed and then drop all the keys
+       //     .mapWithState(StateSpec.function(schemaStateFunction()))
             .map(Schemas::toCDCRecord);
   }
 

@@ -21,7 +21,10 @@ import co.cask.cdap.api.data.schema.Schema;
 import co.cask.cdc.plugins.common.Schemas;
 import co.cask.hydrator.plugin.DBUtils;
 import com.google.common.base.Joiner;
+import com.google.common.collect.Lists;
 import org.apache.spark.api.java.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -35,6 +38,7 @@ public class ResultSetToDDLRecord implements Function<ResultSet, StructuredRecor
   private final String schemaName;
   private final String tableName;
   private final boolean requireSeqNumber;
+  private static final Logger LOG = LoggerFactory.getLogger(CTSQLServer.class);
 
   ResultSetToDDLRecord(String schemaName, String tableName, boolean requireSeqNumber) {
     this.schemaName = schemaName;
@@ -44,9 +48,15 @@ public class ResultSetToDDLRecord implements Function<ResultSet, StructuredRecor
 
   @Override
   public StructuredRecord call(ResultSet row) throws SQLException {
-    java.util.List<co.cask.cdap.api.data.schema.Schema.Field> fields = DBUtils.getSchemaFields(row);
+    java.util.List<co.cask.cdap.api.data.schema.Schema.Field> fields = Lists.newArrayList();
     if (requireSeqNumber) {
-      fields.add(co.cask.cdap.api.data.schema.Schema.Field.of("SYS_CHANGE_VERSION", Schema.of(Schema.Type.INT)));
+      fields.add(co.cask.cdap.api.data.schema.Schema.Field.of("CHANGE_TRACKING_VERSION", Schema.of(Schema.Type.LONG)));
+      fields.add(co.cask.cdap.api.data.schema.Schema.Field.of("CDC_CURRENT_TIMESTAMP", Schema.of(Schema.Type.LONG)));
+
+    }
+    fields.addAll(DBUtils.getSchemaFields(row));
+    for (Schema.Field field : fields) {
+      LOG.info("Feild details : {}", field.toString());
     }
     Schema tableSchema = Schema.recordOf(Schemas.SCHEMA_RECORD, fields);
     return StructuredRecord.builder(Schemas.DDL_SCHEMA)

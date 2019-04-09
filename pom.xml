@@ -20,7 +20,7 @@
   <groupId>co.cask.cdc</groupId>
   <artifactId>cask-cdc</artifactId>
   <packaging>jar</packaging>
-  <version>2.1.9-SNAPSHOT</version>
+  <version>1.0.1-SNAPSHOT</version>
   <name>cask-cdc</name>
 
   <licenses>

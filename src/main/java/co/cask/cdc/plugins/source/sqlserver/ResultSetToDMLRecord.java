@@ -29,8 +29,6 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,15 +59,15 @@ public class ResultSetToDMLRecord implements Function<ResultSet, StructuredRecor
 
     Schema changeSchema = getChangeSchema(row, size);
     LOG.debug("Size is {} . Change schema is {}", size, changeSchema.toString());
+    Map<String, Object> map = getChangeData(row, changeSchema, size);
     return StructuredRecord.builder(Schemas.DML_SCHEMA)
               .set(Schemas.TABLE_FIELD, Joiner.on(".").join(tableInformation.getSchemaName(),
                       tableInformation.getName()))
               .set(Schemas.PRIMARY_KEYS_FIELD, Lists.newArrayList(tableInformation.getPrimaryKeys()))
               .set(Schemas.OP_TYPE_FIELD, getChangeOperation(row).name())
               .set(Schemas.UPDATE_SCHEMA_FIELD, changeSchema.toString())
-              .set(Schemas.UPDATE_VALUES_FIELD, getChangeData(row, changeSchema, size))
+              .set(Schemas.UPDATE_VALUES_FIELD, map)
               .build();
-
   }
 
   private static OperationType getChangeOperation(ResultSet row) throws Exception {
@@ -88,33 +86,51 @@ public class ResultSetToDMLRecord implements Function<ResultSet, StructuredRecor
   private static Map<String, Object> getChangeData(ResultSet resultSet, Schema changeSchema,
                                                    int size) throws Exception {
     ResultSetMetaData metadata = resultSet.getMetaData();
+    LOG.debug("Metadata size {} and change schema size {} ", metadata.getColumnCount() ,
+            changeSchema.getFields().size());
     Map<String, Object> changes = new HashMap<>();
     for (int i = 0; i < changeSchema.getFields().size(); i++) {
-      int column = i + size;
+
+      Schema.Field field = changeSchema.getFields().get(i);
+      int column = getColumnForFeild(metadata, field.getName());
       int sqlType = metadata.getColumnType(column);
       String sqlTypeName = metadata.getColumnTypeName(column);
       int sqlPrecision = metadata.getPrecision(column);
       int sqlScale = metadata.getScale(column);
-      Schema.Field field = changeSchema.getFields().get(i);
-      LOG.debug("Column: {} sqlTypeName {} SQLType: {} FeildName: {} " +
-                      "Feild.Schema.toString {} is String {} feildtoString: {}",
+      LOG.debug("Metadata information Name {} Type {} Class {} Column: {} sqlTypeName {} " +
+                      "SQLType: {} FeildName: {} Feild.Schema.toString {} is String {} " +
+                      "feildtoString: {} \n",
+              metadata.getColumnName(column), metadata.getColumnTypeName(column),
+              metadata.getColumnClassName(column),
               column, sqlTypeName, sqlType, field.getName(), field.getSchema().toString(),
               field.getSchema().toString().contains("string"), field.toString());
+      getColumnForFeild(metadata, field.getName());
+
       try {
         Object sqlValue = DBUtils.transformValue(sqlType, sqlPrecision, sqlScale, resultSet, field.getName());
         Object javaValue = transformSQLToJavaType(sqlValue);
         changes.put(field.getName(), javaValue);
+      //  LOG.info("Values is ({}) : {}", field.getName(), javaValue);
       } catch (Exception e) {
-        LOG.error("In exception. SQLType : {} Field is {}", sqlType, field.getName());
-        LOG.error(e.getLocalizedMessage());
-        changes.put(field.getName(), "");
-
+        LOG.debug("In exception. SQLType : {} Field is {} Error is {}",
+                sqlType, field.getName(), e.getLocalizedMessage());
+       // LOG.info("Values is : {}", resultSet.getObject(column).toString());
+        changes.put(field.getName(), resultSet.getObject(column).toString());
       }
     }
+    LOG.info("Data is {}", changes.toString());
     return changes;
   }
 
+  private static int getColumnForFeild(ResultSetMetaData metadata, String columnName) throws Exception {
+    for (int i = 1; i <= metadata.getColumnCount(); i++) {
+      if (metadata.getColumnLabel(i).equals(columnName) || metadata.getColumnName(i).equals(columnName)) {
+        return i;
+      }
+    }
+      throw new Exception ("Can not find " + columnName);
 
+  }
   private static Schema getChangeSchema(ResultSet resultSet, int size) throws Exception {
     List<Schema.Field> schemaFields = DBUtils.getSchemaFields(resultSet);
     // drop first three columns as they are from change tracking tables and does not represent the change data

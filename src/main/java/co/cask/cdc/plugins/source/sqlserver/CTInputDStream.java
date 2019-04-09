@@ -18,7 +18,6 @@ package co.cask.cdc.plugins.source.sqlserver;
 
 import co.cask.cdap.api.data.format.StructuredRecord;
 import com.google.common.base.Throwables;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.rdd.JdbcRDD;
@@ -29,7 +28,6 @@ import org.apache.spark.streaming.dstream.InputDStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.Option;
-import scala.reflect.ClassTag;
 import scala.reflect.ClassTag$;
 
 import java.sql.Connection;
@@ -37,10 +35,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
+
+
+import java.util.Arrays;
+
 import java.util.Collection;
-import java.util.LinkedHashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -51,37 +50,40 @@ import java.util.stream.Collectors;
 public class CTInputDStream extends InputDStream<StructuredRecord> {
   private static final Logger LOG = LoggerFactory.getLogger(CTInputDStream.class);
   private final JdbcRDD.ConnectionFactory connectionFactory;
-  private ClassTag<StructuredRecord> tag;
   private String connection;
   private String username;
   private String password;
   private long trackingOffset;
   private boolean requireSeqNumber;
+  private String tableName;
 
-  CTInputDStream(StreamingContext ssc, ClassTag<StructuredRecord> tag, JdbcRDD.ConnectionFactory connectionFactory,
+  CTInputDStream(StreamingContext ssc, JdbcRDD.ConnectionFactory connectionFactory,
                  String connection, String username,
-                 String password, boolean requireSeqNumber, long offset) {
+                 String password, boolean requireSeqNumber, long offset, String table) {
     super(ssc, ClassTag$.MODULE$.apply(StructuredRecord.class));
     this.connectionFactory = connectionFactory;
     this.connection = connection;
     this.username = username;
     this.password = password;
-    trackingOffset = offset;
+    this.trackingOffset = offset;
     this.requireSeqNumber = requireSeqNumber;
+    this.tableName = table;
   }
 
   @Override
   public Option<RDD<StructuredRecord>> compute(Time validTime) {
     try (Connection connection = connectionFactory.getConnection()) {
       // get the table information of all tables which have ct enabled.
-      List<TableInformation> tableInformations = getCTEnabledTables(connection);
+      List<TableInformation> tableInformations = getCTEnabledTables(connection, tableName);
 
-      LinkedList<JavaRDD<StructuredRecord>> changeRDDs = new LinkedList<>();
+      java.util.LinkedList<JavaRDD<StructuredRecord>> changeRDDs = new java.util.LinkedList<>();
 
       // Get the schema of tables. We get the schema of tables every microbatch because we want to update the downstream
       // dataset with the DDL changes if any.
       for (TableInformation tableInformation : tableInformations) {
-        changeRDDs.add(getColumns(tableInformation));
+        if (tableInformation.getName().equals(tableName)) {
+          changeRDDs.add(getColumns(tableInformation, requireSeqNumber));
+        }
       }
 
       // retrieve the current highest tracking version
@@ -89,8 +91,10 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
       long cur = getCurrentTrackingVersion(connection);
       // get all the data changes (DML) for the ct enabled tables till current tracking version
       for (TableInformation tableInformation : tableInformations) {
-        changeRDDs.add(getChangeData(tableInformation, prev, cur,
-                requireSeqNumber));
+        if (tableInformation.getName().equals(tableName)) {
+          changeRDDs.add(getChangeData(tableInformation, prev, cur,
+                  requireSeqNumber));
+        }
       }
       // update the tracking version
       trackingOffset = cur;
@@ -124,7 +128,10 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
   private JavaRDD<StructuredRecord> getChangeData(TableInformation tableInformation, long prev, long cur,
                                                   boolean requireSeqNumber) {
     String stmt = String.format("SELECT [CT].[SYS_CHANGE_CREATION_VERSION], [CT].[SYS_CHANGE_OPERATION]," +
-                                  " [CT].[SYS_CHANGE_VERSION], %s, %s FROM [%s] as [CI] RIGHT OUTER JOIN " +
+                                  " [CT].[SYS_CHANGE_VERSION] as CHANGE_TRACKING_VERSION, " +
+                                  "CURRENT_TIMESTAMP as CDC_CURRENT_TIMESTAMP, " +
+                                   "%s, %s FROM [%s] " +
+                                  "as [CI] RIGHT OUTER JOIN " +
                                   "CHANGETABLE (CHANGES [%s], %s) as [CT] on %s where [CT]" +
                                   ".[SYS_CHANGE_VERSION] > ? " +
                                   "and [CT].[SYS_CHANGE_VERSION] <= ? ORDER BY [CT]" +
@@ -140,19 +147,21 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
                           new ResultSetToDMLRecord(tableInformation, requireSeqNumber));
   }
 
-  private long getCurrentTrackingVersion(Connection connection) throws SQLException {
+  private long getCurrentTrackingVersion(Connection connection) throws java.sql.SQLException {
     ResultSet resultSet = connection.createStatement().executeQuery("SELECT CHANGE_TRACKING_CURRENT_VERSION()");
     long changeVersion = 0;
     if (resultSet.next()) {
-      LOG.debug("Current tracking version is {}", changeVersion);
       changeVersion = resultSet.getLong(1);
+      LOG.debug("Current tracking version is {}", changeVersion);
+
     }
     return changeVersion;
   }
 
-  private JavaRDD<StructuredRecord> getColumns(TableInformation tableInformation) {
-    String stmt = String.format("SELECT TOP 1 * FROM [%s].[%s] where ?=?", tableInformation.getSchemaName(),
+  private JavaRDD<StructuredRecord> getColumns(TableInformation tableInformation, boolean requireSeqNumber) {
+    String stmt = String.format("SELECT top 1 * FROM [%s].[%s] where ?=?", tableInformation.getSchemaName(),
                                 tableInformation.getName());
+    LOG.debug("getColumns SQL {}", stmt);
     return JdbcRDD.create(getJavaSparkContext(), connectionFactory, stmt, 1, 1, 1,
                           new ResultSetToDDLRecord(tableInformation.getSchemaName(), tableInformation.getName(),
                                   requireSeqNumber));
@@ -164,11 +173,11 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
 
   private Set<String> getColumns(Connection connection, String schema, String table) throws SQLException {
     String query = String.format("SELECT * from [%s].[%s]", schema, table);
-    Statement statement = connection.createStatement();
+    java.sql.Statement statement = connection.createStatement();
     statement.setMaxRows(1);
     ResultSet resultSet = statement.executeQuery(query);
     ResultSetMetaData metadata = resultSet.getMetaData();
-    Set<String> columns = new LinkedHashSet<>();
+    Set<String> columns = new java.util.LinkedHashSet<>();
     for (int i = 1; i <= metadata.getColumnCount(); i++) {
       columns.add(metadata.getColumnName(i));
     }
@@ -179,7 +188,7 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
     String stmt = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE " +
       "OBJECTPROPERTY(OBJECT_ID(CONSTRAINT_SCHEMA+'.'+CONSTRAINT_NAME), 'IsPrimaryKey') = 1 AND " +
       "TABLE_SCHEMA = ? AND TABLE_NAME = ?";
-    Set<String> keyColumns = new LinkedHashSet<>();
+    Set<String> keyColumns = new java.util.LinkedHashSet<>();
     try (PreparedStatement primaryKeyStatement = connection.prepareStatement(stmt)) {
       primaryKeyStatement.setString(1, schema);
       primaryKeyStatement.setString(2, table);
@@ -192,17 +201,20 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
     return keyColumns;
   }
 
-  private List<TableInformation> getCTEnabledTables(Connection connection) throws SQLException {
-    List<TableInformation> tableInformations = new LinkedList<>();
+  private List<TableInformation> getCTEnabledTables(Connection connection, String tableNames) throws SQLException {
+    java.util.List<TableInformation> tableInformations = new java.util.LinkedList<>();
+    List<String> tables = Arrays.asList(tableName.split(","));
     String stmt = "SELECT s.name as schema_name, t.name AS table_name, ctt.* FROM sys.change_tracking_tables ctt " +
       "INNER JOIN sys.tables t on t.object_id = ctt.object_id INNER JOIN sys.schemas s on s.schema_id = t.schema_id";
     try (ResultSet rs = connection.createStatement().executeQuery(stmt)) {
       while (rs.next()) {
         String schemaName = rs.getString("schema_name");
         String tableName = rs.getString("table_name");
-        tableInformations.add(new TableInformation(schemaName, tableName,
-                                                   getColumns(connection, schemaName, tableName),
-                                                   getKeyColumns(connection, schemaName, tableName)));
+        if (tables.contains(tableName)) {
+          tableInformations.add(new TableInformation(schemaName, tableName,
+                  getColumns(connection, schemaName, tableName),
+                  getKeyColumns(connection, schemaName, tableName)));
+        }
       }
       return tableInformations;
     }
@@ -219,4 +231,5 @@ public class CTInputDStream extends InputDStream<StructuredRecord> {
       .map(column -> String.format("[%s].[%s]", tableName, column))
       .collect(Collectors.joining(", "));
   }
+
 }

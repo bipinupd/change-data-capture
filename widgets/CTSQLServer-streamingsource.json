@@ -63,6 +63,12 @@
           "label": "CDC Sequence Number",
           "name": "cdcnnumber",
           "description": "Sequence Number to start ingesting number"
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Table Name",
+          "name": "tableName",
+          "description": "Table name for CT Information (Comma seperated for multiple tables)"
         }
       ]
     }
