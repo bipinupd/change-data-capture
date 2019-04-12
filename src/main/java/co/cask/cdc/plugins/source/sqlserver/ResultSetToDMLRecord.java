@@ -27,6 +27,8 @@ import org.apache.spark.api.java.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Blob;
+import java.sql.Clob;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.util.HashMap;
@@ -107,9 +109,22 @@ public class ResultSetToDMLRecord implements Function<ResultSet, StructuredRecor
       getColumnForFeild(metadata, field.getName());
 
       try {
-        Object sqlValue = DBUtils.transformValue(sqlType, sqlPrecision, sqlScale, resultSet, field.getName());
-        Object javaValue = transformSQLToJavaType(sqlValue);
-        changes.put(field.getName(), javaValue);
+        /**
+         * Handling clob and blob data type ... JTDS does not support free() that throws exception from the DBUtils.
+         */
+        if (sqlType == 2005) {
+          Clob clob = resultSet.getClob(field.getName());
+          String retVal = (clob != null ? clob.getSubString(1, (int) clob.length()) : null);
+          changes.put(field.getName(), retVal);
+        } else if (sqlType == 2004) {
+          Blob blob = resultSet.getBlob(field.getName());
+          byte[] blobVal = (blob != null ? blob.getBytes(1L, (int)blob.length()) : null);
+          changes.put(field.getName(), blobVal);
+        } else {
+          Object sqlValue = DBUtils.transformValue(sqlType, sqlPrecision, sqlScale, resultSet, field.getName());
+          Object javaValue = transformSQLToJavaType(sqlValue);
+          changes.put(field.getName(), javaValue);
+        }
       //  LOG.info("Values is ({}) : {}", field.getName(), javaValue);
       } catch (Exception e) {
         LOG.debug("In exception. SQLType : {} Field is {} Error is {}",
