@@ -118,7 +118,7 @@ public class ResultSetToDMLRecord implements Function<ResultSet, StructuredRecor
           changes.put(field.getName(), retVal);
         } else if (sqlType == 2004) {
           Blob blob = resultSet.getBlob(field.getName());
-          byte[] blobVal = (blob != null ? blob.getBytes(1L, (int)blob.length()) : null);
+          byte[] blobVal = (blob != null ? blob.getBytes(1L, (int) blob.length()) : null);
           changes.put(field.getName(), blobVal);
         } else {
           Object sqlValue = DBUtils.transformValue(sqlType, sqlPrecision, sqlScale, resultSet, field.getName());

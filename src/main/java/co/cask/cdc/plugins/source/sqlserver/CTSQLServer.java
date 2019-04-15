@@ -19,7 +19,6 @@ package co.cask.cdc.plugins.source.sqlserver;
 import co.cask.cdap.api.annotation.Description;
 import co.cask.cdap.api.annotation.Name;
 import co.cask.cdap.api.annotation.Plugin;
-import co.cask.cdap.api.data.format.RecordFormat;
 import co.cask.cdap.api.data.format.StructuredRecord;
 import co.cask.cdap.api.dataset.DatasetProperties;
 import co.cask.cdap.etl.api.PipelineConfigurer;
@@ -29,7 +28,6 @@ import co.cask.cdap.etl.api.validation.InvalidStageException;
 import co.cask.cdc.plugins.common.Schemas;
 import co.cask.hydrator.common.Constants;
 import org.apache.spark.api.java.Optional;
-import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function4;
 import org.apache.spark.streaming.State;
 import org.apache.spark.streaming.StateSpec;
@@ -131,10 +129,8 @@ public class CTSQLServer extends StreamingSource<StructuredRecord> {
             getConnectionString(), conf.getUsername(), conf.getPassword(),
             requireSeqNumber, offset, tableName);
     return JavaDStream.fromDStream(dstream, tag)
-     //       .mapToPair(structuredRecord -> new Tuple2<>("", structuredRecord))
-//            // map the dstream with schema state store to detect changes in schema
-//            // filter out the ddl record whose schema hasn't changed and then drop all the keys
-       //     .mapWithState(StateSpec.function(schemaStateFunction()))
+            .mapToPair(structuredRecord -> new Tuple2<>("", structuredRecord))
+            .mapWithState(StateSpec.function(schemaStateFunction()))
             .map(Schemas::toCDCRecord);
   }
 
